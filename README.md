@@ -1,2 +1,2 @@
-# uC-Prac3
-ESP32 GPIO Charlieplexing. "Tic Tac Toe"
+# uC-Prac10
+ESP32 ADC. Simple alarm

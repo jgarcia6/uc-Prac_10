@@ -1,9 +1,8 @@
-/* Reaction time game */
 #include <stdio.h>
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_system.h"
+#include "driver/adc.h"
 #include “myTimer.h”
 #include “myUart.h”
 
@@ -12,135 +11,72 @@
 #define PC_UART_RX_PIN  (3)
 #define PC_UART_TX_PIN  (1)
 
-const struct note ImperialMarch[] =
+void ADC1_Ch0_Ini(void);
+uint16_t ADC1_Ch0_Read(void);
+uint16_t ADC1_Ch0_Read_mV(void);
+
+//#define ADC_CALIB_ENABLE
+#ifdef ADC_CALIB_ENABLE
+#include "esp_adc_cal.h"
+static esp_adc_cal_characteristics_t adc1_chars;
+bool cali_enable = false;
+#endif
+
+void ADC1_Ch0_Ini(void)
 {
-    //for the sheet music see:
-    //http://www.musicnotes.com/sheetmusic/mtd.asp?ppn=MN0016254
-    //this is just a translation of said sheet music to frequencies / time in ms
-    //used TEMPO ms for a quart note
-    {a, TEMPO},
-    {a, TEMPO},
-    {a, TEMPO},
-    {f, TEMPO*3/4},
-    {cH, TEMPO*1/4},
+#ifdef ADC_CALIB_ENABLE
+    esp_err_t ret;
+    ret = esp_adc_cal_check_efuse(ESP_ADC_CAL_VAL_EFUSE_VREF);
+    if (ret == ESP_ERR_NOT_SUPPORTED) {
+        printf("Calibration scheme not supported, skip software calibration\n");
+    } else if (ret == ESP_ERR_INVALID_VERSION) {
+        printf("eFuse not burnt, skip software calibration\n");
+    } else if (ret == ESP_OK) {
+        cali_enable = true;
+        esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_DEFAULT, 0, &adc1_chars);
+    } else {
+        printf("Invalid arg\n");
+    }
+#endif
+    //ADC1 config
+    adc1_config_width(ADC_WIDTH_BIT_12);
+    adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
+}
 
-    {a, TEMPO},
-    {f, TEMPO*3/4},
-    {cH, TEMPO*1/4},
-    {a, TEMPO*2},
-    //first bit
+uint16_t ADC1_Ch0_Read(void)
+{
+    return adc1_get_raw(ADC1_CHANNEL_0);
+}
 
-    {eH, TEMPO},
-    {eH, TEMPO},
-    {eH, TEMPO},
-    {fH, TEMPO*3/4},
-    {cH, TEMPO*1/4},
-
-    {gS, TEMPO},
-    {f, TEMPO*3/4},
-    {cH, TEMPO*1/4},
-    {a, TEMPO*2},
-    //second bit...
-
-    {aH, TEMPO},
-    {a, TEMPO*3/4},
-    {a, TEMPO*1/4},
-    {aH, TEMPO},
-    {gSH, TEMPO/2},
-    {gH, TEMPO/2},
-
-    {fSH, TEMPO*1/4},
-    {fH, TEMPO*1/4},
-    {fSH, TEMPO/2},
-    {0,TEMPO/2},
-    {aS, TEMPO/2},
-    {dSH, TEMPO},
-    {dH, TEMPO/2},
-    {cSH, TEMPO/2},
-    //start of the interesting bit
-
-    {cH, TEMPO*1/4},
-    {b, TEMPO*1/4},
-    {cH, TEMPO/2},
-    {0,TEMPO/2},
-    {f, TEMPO*1/4},
-    {gS, TEMPO},
-    {f, TEMPO*3/4},
-    {a, TEMPO*1/4},
-
-    {cH, TEMPO},
-    {a, TEMPO*3/4},
-    {cH, TEMPO*1/4},
-    {eH, TEMPO*2},
-    //more interesting stuff (this doesn't quite get it right somehow)
-
-    {aH, TEMPO},
-    {a, TEMPO*3/4},
-    {a, TEMPO*1/4},
-    {aH, TEMPO},
-    {gSH, TEMPO/2},
-    {gH, TEMPO/2},
-
-    {fSH, TEMPO*1/4},
-    {fH, TEMPO*1/4},
-    {fSH, TEMPO/2},
-    {0,TEMPO/2},
-    {aS, TEMPO/2},
-    {dSH, TEMPO},
-    {dH, TEMPO/2},
-    {cSH, TEMPO/2},
-    //repeat... repeat
-
-    {cH, TEMPO*1/4},
-    {b, TEMPO*1/4},
-    {cH, TEMPO/2},
-    {0,TEMPO/2},
-    {f, TEMPO/2},
-    {gS, TEMPO},
-    {f, TEMPO*3/4},
-    {cH, TEMPO*1/4},
-
-    {a, TEMPO},
-    {f, TEMPO*3/4},
-    {c, TEMPO*1/4},
-    {a, TEMPO*2}
-    //and we're done
-};
+uint16_t ADC1_Ch0_Read_mV(void)
+{
+    // TODO
+    //Make the appropiate convertion of the RAW ADC value to mV by calling ADC1_Ch0_Read()
+    // No calibration needed
+    return 0;
+}
 
 int app_main()
 {
-    
-    uartInit(PC_UART_PORT, 57600, 8, 1, 2, PC_UART_TX_PIN,PC_UART_RX_PIN);
-    delayMs(500);
-    uartClrScr(PC_UART_PORT);
+    uint16_t adc_raw;
+    char str[20];
+    // TODO: Board Init (GPIO, UART, Timers)
+    ADC1_Ch0_Ini();
 
-    // TODO: GPIO Init
-    timer0Init();
-    
-    while(1)
-    {
-        if (uartKbhit(0))
-        {
-            switch (uartGetchar(0))
-            {
-            case 'p':
-            case 'P': // Play Song
-                    timer1Play(ImperialMarch, sizeof(ImperialMarch)/sizeof(struct note));
-                    break;
-            /*
-            case 'n':
-            case 'N': //Next song
-                            break;
-            case 'b'
-            case 'B'://Previous song
-                            break;
-            */
-            default:
-                    break;
-            }
+    while (1) {
+        adc_raw = ADC1_Ch0_Read();
+        uartPuts(PC_UART_PORT,"raw  data: ");
+        myItoa(adc_raw, str, 10);
+        uartPuts(PC_UART_PORT, str)
+        uartPutchar(PC_UART_PORT, '\n');
+#ifdef ADC_CALIB_ENABLE
+        if (cali_enable) {
+            uint32_t voltage = 0;
+            voltage = esp_adc_cal_raw_to_voltage(adc_raw, &adc1_chars);
+            printf("cali data: %d mV\n", voltage);
         }
-        // Prevent watchdog fault
-        delayMs(10);
+#endif
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     return 0; 
