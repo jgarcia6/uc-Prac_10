@@ -1,2 +1,2 @@
 # uC-Prac10
-ESP32 ADC. Simple alarm
+ESP32 ADC. Simple conversion
